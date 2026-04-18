@@ -213,7 +213,7 @@ if prompt:
     try:
         # stream=False 关掉打字机，一次性拿回完整结果
         response = client.chat.completions.create(
-            model="deepseek-ai/DeepSeek-V3", # 或者试试 "Qwen/Qwen2.5-7B-Instruct"
+            model="deepseek-reasoner", # 或者试试 "Qwen/Qwen2.5-7B-Instruct"
             messages=full_messages, 
             stream=False 
         )
