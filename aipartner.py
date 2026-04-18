@@ -77,6 +77,9 @@ user_avatar_b64 = get_image_base64(USER_AVATAR_PATH)
 
 st.markdown("""
 <style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
     .main { background-color: #f5f5f0; }
     .chat-container { max-height: 70vh; overflow-y: auto; padding: 1rem; }
     .message { display: flex; margin-bottom: 1.5rem; align-items: flex-start; }
