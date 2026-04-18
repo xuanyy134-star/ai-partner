@@ -187,51 +187,59 @@ components.html(
 )
 
 # ==========================================
-# 6. 发送消息与API调用 (关闭打字机，解决卡顿)
+# 6. 发送消息与API调用 (修正：回车即显示)
 # ==========================================
 prompt = st.chat_input("Say something")
 
 if prompt:
-    # 1. 立即存入内存
+    # 1. 立即存入内存（为了下次刷新还在）
     st.session_state.all_sessions[st.session_state.current_session].append({"role": "user", "content": prompt})
 
-    # 2. 立刻渲染你的绿气泡
+    # 2. 【关键：立即渲染】不等 AI，直接在容器里画出你的气泡
     with chat_container:
+        # 必须重新打开一次 chat-container 的 div 结构或者直接在容器内追加
         user_avatar_html = f"<img src='data:image/png;base64,{user_avatar_b64}' class='avatar' />" if user_avatar_b64 else ""
-        st.markdown(f"<div class='message user'>{user_avatar_html}<div class='bubble user'>{prompt}</div></div>", unsafe_allow_html=True)
-        
-        # 放一个“正在输入中...”的提示，安抚等待的焦虑
+        st.markdown(f"<div class='message user'>{user_avatar_html}<div class='bubble user'>{prompt}</div></div>",
+                    unsafe_allow_html=True)
+
+        # 为 AI 准备一个空白的“坑”，等下让它往这里填字
         ai_avatar_html = f"<img src='data:image/png;base64,{ai_avatar_b64}' class='avatar' />" if ai_avatar_b64 else ""
         ai_placeholder = st.empty()
-        ai_placeholder.markdown(f"<div class='message'>{ai_avatar_html}<div class='bubble assistant'><i>正在疯狂敲字中...</i></div></div>", unsafe_allow_html=True)
 
-    # 3. 后台默默请求 API（不开启流式输出）
-    client = OpenAI(api_key=os.environ.get('DEEPSEEK_API_KEY'), base_url="https://api.siliconflow.cn/v1")
+        # 3. 开启 AI 思考模式
+    client = OpenAI(api_key=os.environ.get('DEEPSEEK_API_KEY'), base_url="https://api.deepseek.com")
+
+    # 构造历史剧本
     full_messages = [{"role": "system", "content": sysprompt}]
     full_messages.extend(st.session_state.all_sessions[st.session_state.current_session])
 
+    # 4. 流式输出：AI 像打字机一样出字
     try:
-        # stream=False 关掉打字机，一次性拿回完整结果
         response = client.chat.completions.create(
-            model="deepseek-reasoner", # 或者试试 "Qwen/Qwen2.5-7B-Instruct"
-            messages=full_messages, 
-            stream=False 
+            model="deepseek-reasoner",
+            messages=full_messages,
+            stream=True  # 开启流式
         )
 
-        assistant_content = response.choices[0].message.content
+        assistant_content = ""
+        # 开始逐个字接收 AI 的回复
+        for chunk in response:
+            if chunk.choices[0].delta.content:
+                assistant_content += chunk.choices[0].delta.content
+                # 实时更新刚才留好的那个“坑”
+                ai_placeholder.markdown(
+                    f"<div class='message'>{ai_avatar_html}<div class='bubble assistant'>{assistant_content}</div></div>",
+                    unsafe_allow_html=True
+                )
 
-        # 4. 瞬间替换掉刚才那个“正在输入中”的提示
-        ai_placeholder.markdown(
-            f"<div class='message'>{ai_avatar_html}<div class='bubble assistant'>{assistant_content}</div></div>", 
-            unsafe_allow_html=True
-        )
-
-        # 5. 存入内存，并开启后台静默存入云端
+        # 5. AI 全部说完了，存入内存
         st.session_state.all_sessions[st.session_state.current_session].append(
             {"role": "assistant", "content": assistant_content})
-        
-        thread = threading.Thread(target=save_data, args=(st.session_state.all_sessions,))
-        thread.start()
+
+        # 6. 最后一步：同步到云端并刷新
+        save_data(st.session_state.all_sessions)
+        st.rerun()
 
     except Exception as e:
-        ai_placeholder.error(f"网络开小差了: {e}")
+        st.error(f"对话出错了: {e}")
+
